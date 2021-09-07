@@ -149,6 +149,7 @@ namespace lspd {
         RegisterYahfa(env);
         RegisterPendingHooks(env);
         RegisterNativeAPI(env);
+        RegisterBypass(env);
     }
 
     void Context::InitLess(JNIEnv *env) {
