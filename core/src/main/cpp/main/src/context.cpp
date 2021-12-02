@@ -30,6 +30,10 @@
 #include "jni/native_api.h"
 #include "service.h"
 #include "symbol_cache.h"
+#include "slicer/reader.h"
+#include "slicer/writer.h"
+#include "slicer/dex_utf8.h"
+#include "Obfuscation.h"
 
 #include <linux/fs.h>
 #include <fcntl.h>
@@ -64,7 +68,8 @@ namespace lspd {
     }
 
     Context::PreloadedDex::PreloadedDex(int fd, std::size_t size) {
-        if (auto addr = mmap(nullptr, size, PROT_READ, MAP_SHARED, fd, 0); addr) {
+        auto *addr = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+        if (addr != MAP_FAILED) {
             addr_ = addr;
             size_ = size;
         } else {
@@ -76,8 +81,21 @@ namespace lspd {
         if (*this) munmap(addr_, size_);
     }
 
+    void Context::ObfuscateDex() {
+        if (!dex_) [[unlikely]] return;
+
+        auto dex = Obfuscation::obfuscateDex(dex_.data(), dex_.size());
+        // TODO: multiple memory copy prevention
+        auto *mem = mmap(nullptr, dex.size(), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        memmove(mem, dex.data(), dex.size());
+        PreloadedDex new_dex(mem, dex.size());
+        std::swap(dex_, new_dex);
+        LOGD("Context::ObfuscateDex: %p, size=%zu", reinterpret_cast<dex::u1*>(dex_.data()), dex.size());
+    }
+
     void Context::PreLoadDex(int fd, std::size_t size) {
         dex_ = PreloadedDex{fd, size};
+        ObfuscateDex();
     }
 
     void Context::PreLoadDex(std::string_view dex_path) {
