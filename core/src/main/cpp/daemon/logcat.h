@@ -8,6 +8,7 @@
 #define NS_PER_SEC 1000000000L
 #define MS_PER_NSEC 1000000
 #define LOGGER_ENTRY_MAX_LEN (5 * 1024)
+#define O_NONBLOCK 0x00000800 // ANDROID_LOG_NONBLOCK
 
 #ifdef __cplusplus
 extern "C" {
