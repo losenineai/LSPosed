@@ -24,6 +24,29 @@ constexpr std::array<char, ANDROID_LOG_SILENT + 1> kLogChar = {
         /*ANDROID_LOG_SILENT*/ 'S',
 };
 
+namespace {
+    inline int GetIntProp(std::string_view prop, int def = -1) {
+        std::array<char, PROP_VALUE_MAX> buf;
+        if (__system_property_get(prop.data(), buf.data()) < 0) return def;
+        return atoi(buf.data());
+    }
+
+    inline std::string GetStrProp(std::string_view prop, std::string def = {}) {
+        std::array<char, PROP_VALUE_MAX> buf;
+        if (__system_property_get(prop.data(), buf.data()) < 0) return def;
+        return {buf.data()};
+    }
+
+    inline bool SetIntProp(std::string_view prop, int val) {
+        auto buf = std::to_string(val);
+        return __system_property_set(prop.data(), buf.data()) >= 0;
+    }
+
+    inline bool SetStrProp(std::string_view prop, std::string_view val) {
+        return __system_property_set(prop.data(), val.data()) >= 0;
+    }
+}
+
 class UniqueFile : public std::unique_ptr<FILE, std::function<void(FILE *)>> {
     inline static deleter_type deleter = [](auto f) { f && f != stdout && fclose(f); };
 public:
@@ -51,6 +74,8 @@ private:
     void ProcessBuffer(struct log_msg *buf);
 
     static size_t PrintLogLine(const AndroidLogEntry &entry, FILE *out);
+
+    static void EnsureLog();
 
     JNIEnv *env_;
     jobject thiz_;
@@ -132,7 +157,7 @@ void Logcat::OnCrash() {
     static size_t kLogdRestartWait = 1 << 3;
     if (++kLogdCrashCount >= kLogdRestartWait) {
         Log("\nLogd crashed too many times, trying manually start...\n");
-        __system_property_set("ctl.restart", "logd");
+        SetStrProp("ctl.restart", "logd");
         if (kLogdRestartWait < max_restart_logd_wait) {
             kLogdRestartWait <<= 1;
         } else {
@@ -178,12 +203,37 @@ void Logcat::ProcessBuffer(struct log_msg *buf) {
     }
 }
 
+void Logcat::EnsureLog() {
+    using namespace std::string_view_literals;
+    constexpr static auto kLogdSizeProp = "persist.logd.size"sv;
+    constexpr static auto kLogdTagProp = "persist.logd.tag"sv;
+    constexpr static auto kLogdMainSizeProp = "persist.logd.size.main"sv;
+    constexpr static auto kLogdCrashSizeProp = "persist.logd.size.crash"sv;
+    // TODO: unit
+    auto logd_size = GetIntProp(kLogdSizeProp);
+    auto logd_tag = GetStrProp(kLogdTagProp);
+    auto logd_main_size = GetIntProp(kLogdMainSizeProp);
+    auto logd_crash_size = GetIntProp(kLogdCrashSizeProp);
+    if (!logd_tag.empty() ||
+        !(logd_main_size == -1 && logd_crash_size == -1 &&
+          logd_size >= static_cast<int>(kLogBufferSize)) ||
+        !(logd_main_size >= static_cast<int>(kLogBufferSize) &&
+          logd_crash_size >= static_cast<int>(kLogBufferSize))) {
+        SetIntProp(kLogdMainSizeProp, kLogBufferSize);
+        SetIntProp(kLogdCrashSizeProp, kLogBufferSize);
+        SetStrProp(kLogdTagProp, "");
+        SetStrProp("ctl.start", "logd-reinit");
+    }
+}
+
 void Logcat::Run() {
     constexpr size_t tail_after_crash = 10U;
     size_t tail = 0;
     RefreshFd(true);
     RefreshFd(false);
     while (true) {
+        EnsureLog();
+
         std::unique_ptr<logger_list, decltype(&android_logger_list_free)> logger_list{
                 android_logger_list_alloc(0, tail, 0), &android_logger_list_free};
         tail = tail_after_crash;
