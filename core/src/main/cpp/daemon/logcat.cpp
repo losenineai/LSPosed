@@ -25,10 +25,41 @@ constexpr std::array<char, ANDROID_LOG_SILENT + 1> kLogChar = {
 };
 
 namespace {
-    inline int GetIntProp(std::string_view prop, int def = -1) {
+    size_t ParseUint(const char *s) {
+        if (s[0] == '\0') return -1;
+
+        while (isspace(*s)) {
+            s++;
+        }
+
+        if (s[0] == '-') {
+            return -1;
+        }
+
+        int base = (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) ? 16 : 10;
+        char *end;
+        auto result = strtoull(s, &end, base);
+        if (end == s) {
+            return -1;
+        }
+        if (*end != '\0') {
+            const char *suffixes = "bkmgtpe";
+            const char *suffix;
+            if ((suffix = strchr(suffixes, tolower(*end))) == nullptr ||
+                __builtin_mul_overflow(result, 1ULL << (10 * (suffix - suffixes)), &result)) {
+                return -1;
+            }
+        }
+        if (std::numeric_limits<size_t>::max() < result) {
+            return -1;
+        }
+        return static_cast<size_t>(result);
+    }
+
+    inline size_t GetByteProp(std::string_view prop, size_t def = -1) {
         std::array<char, PROP_VALUE_MAX> buf;
         if (__system_property_get(prop.data(), buf.data()) < 0) return def;
-        return atoi(buf.data());
+        return ParseUint(buf.data());
     }
 
     inline std::string GetStrProp(std::string_view prop, std::string def = {}) {
@@ -45,7 +76,8 @@ namespace {
     inline bool SetStrProp(std::string_view prop, std::string_view val) {
         return __system_property_set(prop.data(), val.data()) >= 0;
     }
-}
+
+}  // namespace
 
 class UniqueFile : public std::unique_ptr<FILE, std::function<void(FILE *)>> {
     inline static deleter_type deleter = [](auto f) { f && f != stdout && fclose(f); };
@@ -209,16 +241,16 @@ void Logcat::EnsureLog() {
     constexpr static auto kLogdTagProp = "persist.logd.tag"sv;
     constexpr static auto kLogdMainSizeProp = "persist.logd.size.main"sv;
     constexpr static auto kLogdCrashSizeProp = "persist.logd.size.crash"sv;
-    // TODO: unit
-    auto logd_size = GetIntProp(kLogdSizeProp);
+    constexpr static size_t kErr = -1;
+    auto logd_size = GetByteProp(kLogdSizeProp);
     auto logd_tag = GetStrProp(kLogdTagProp);
-    auto logd_main_size = GetIntProp(kLogdMainSizeProp);
-    auto logd_crash_size = GetIntProp(kLogdCrashSizeProp);
+    auto logd_main_size = GetByteProp(kLogdMainSizeProp);
+    auto logd_crash_size = GetByteProp(kLogdCrashSizeProp);
     if (!logd_tag.empty() ||
-        !(logd_main_size == -1 && logd_crash_size == -1 &&
-          logd_size >= static_cast<int>(kLogBufferSize)) ||
-        !(logd_main_size >= static_cast<int>(kLogBufferSize) &&
-          logd_crash_size >= static_cast<int>(kLogBufferSize))) {
+        !((logd_main_size == kErr && logd_crash_size == kErr && logd_size != kErr &&
+           logd_size >= kLogBufferSize) ||
+          (logd_main_size != kErr && logd_main_size >= kLogBufferSize && logd_crash_size != kErr &&
+           logd_crash_size >= kLogBufferSize))) {
         SetIntProp(kLogdMainSizeProp, kLogBufferSize);
         SetIntProp(kLogdCrashSizeProp, kLogBufferSize);
         SetStrProp(kLogdTagProp, "");
