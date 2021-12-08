@@ -23,6 +23,7 @@
 #include "jni/art_class_linker.h"
 #include "jni/yahfa.h"
 #include "jni/resources_hook.h"
+#include "jni/bypass_sig.h"
 #include <art/runtime/jni_env_ext.h>
 #include "jni/pending_hooks.h"
 #include "context.h"
@@ -30,6 +31,8 @@
 #include "jni/native_api.h"
 #include "service.h"
 #include "symbol_cache.h"
+#include "android/asset_manager.h"
+#include "android/asset_manager_jni.h"
 
 #include <linux/fs.h>
 #include <fcntl.h>
@@ -146,6 +149,28 @@ namespace lspd {
         RegisterYahfa(env);
         RegisterPendingHooks(env);
         RegisterNativeAPI(env);
+    }
+
+    void Context::InitLess(JNIEnv *env) {
+        InitSymbolCache(nullptr);
+        InstallInlineHooks();
+
+        auto stub = env->FindClass("org/lsposed/lspatch/appstub/LSPApplicationStub");
+        auto dex_field = env->GetStaticFieldID(stub, "dex", "[B");
+
+        auto array = (jbyteArray) env->GetStaticObjectField(stub, dex_field);
+        dex_ = PreloadedDex{env->GetByteArrayElements(array, nullptr), static_cast<size_t>(env->GetArrayLength(array))};
+
+        LoadDex(env);
+
+        Init(env);
+
+        if (auto entry_class = FindClassFromLoader(env, GetCurrentClassLoader(),
+                                                   "org.lsposed.lspatch.loader.LSPApplication")) {
+            entry_class_ = JNI_NewGlobalRef(env, entry_class);
+        }
+
+        FindAndCall(env, "onLoad", "()V");
     }
 
     ScopedLocalRef<jclass>

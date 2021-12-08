@@ -499,12 +499,12 @@ public class LSPManagerService extends ILSPManagerService.Stub {
 
     @Override
     public int getXposedVersionCode() {
-        return BuildConfig.VERSION_CODE;
+        return 0;
     }
 
     @Override
     public String getXposedVersionName() {
-        return BuildConfig.VERSION_NAME;
+        return null;
     }
 
     @Override

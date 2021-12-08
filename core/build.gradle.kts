@@ -17,8 +17,8 @@
  * Copyright (C) 2021 LSPosed Contributors
  */
 
-import com.android.build.api.component.analytics.AnalyticsEnabledApplicationVariant
-import com.android.build.api.variant.impl.ApplicationVariantImpl
+import com.android.build.api.component.analytics.AnalyticsEnabledLibraryVariant
+import com.android.build.api.variant.impl.LibraryVariantImpl
 import com.android.build.gradle.BaseExtension
 import com.android.ide.common.signing.KeystoreHelper
 import org.apache.commons.codec.binary.Hex
@@ -32,7 +32,7 @@ import java.util.jar.JarFile
 import java.util.zip.ZipOutputStream
 
 plugins {
-    id("com.android.application")
+    id("com.android.library")
 }
 
 val moduleName = "LSPosed"
@@ -74,11 +74,8 @@ android {
     }
 
     defaultConfig {
-        applicationId = "org.lsposed.lspd"
         minSdk = androidMinSdkVersion
         targetSdk = androidTargetSdkVersion
-        versionCode = verCode
-        versionName = verName
         multiDexEnabled = false
 
         externalNativeBuild {
@@ -104,6 +101,8 @@ android {
         isAbortOnError = true
         isCheckReleaseBuilds = false
     }
+
+    aidlPackagedList("org/lsposed/lspd/models/Module.aidl")
 
     buildTypes {
         release {
@@ -177,7 +176,7 @@ dependencies {
     compileOnly(project(":hiddenapi-stubs"))
     implementation(project(":hiddenapi-bridge"))
     implementation(project(":manager-service"))
-    android.applicationVariants.all {
+    android.libraryVariants.all {
         "${name}Implementation"(files(File(project.buildDir, "tmp/${name}R.jar")) {
             builtBy("generateApp${name}RFile")
         })
@@ -189,9 +188,9 @@ val zipAll = task("zipAll", Task::class) {
 }
 
 androidComponents.onVariants { v ->
-    val variant: ApplicationVariantImpl =
-        if (v is ApplicationVariantImpl) v
-        else (v as AnalyticsEnabledApplicationVariant).delegate as ApplicationVariantImpl
+    val variant: LibraryVariantImpl =
+        if (v is LibraryVariantImpl) v
+        else (v as AnalyticsEnabledLibraryVariant).delegate as LibraryVariantImpl
     val variantCapped = variant.name.capitalize()
     val variantLowered = variant.name.toLowerCase()
     val buildTypeCapped = variant.buildType!!.capitalize()
@@ -202,11 +201,11 @@ androidComponents.onVariants { v ->
     val magiskDir = "$buildDir/magisk/$variantLowered"
 
     task("generateApp${variantCapped}RFile", Jar::class) {
-        dependsOn(":app:process${buildTypeCapped}Resources")
+        dependsOn(":lspapp:process${buildTypeCapped}Resources")
         doLast {
             val rFile = JarFile(
                 File(
-                    project(":app").buildDir,
+                    project(":lspapp").buildDir,
                     "intermediates/compile_and_runtime_not_namespaced_r_class_jar/${buildTypeLowered}/R.jar"
                 )
             )
@@ -227,7 +226,7 @@ androidComponents.onVariants { v ->
         val outSrcDir = file("$buildDir/generated/source/signInfo/${variantLowered}")
         val outSrc = file("$outSrcDir/org/lsposed/lspd/util/SignInfo.java")
         val signInfoTask = tasks.register("generate${variantCapped}SignInfo") {
-            dependsOn(":app:validateSigning${buildTypeCapped}")
+            dependsOn(":lspapp:validateSigning${buildTypeCapped}")
             outputs.file(outSrc)
             doLast {
                 val sign = app.buildTypes.named(buildTypeLowered).get().signingConfig

@@ -65,6 +65,8 @@ namespace lspd {
 
         void Init();
 
+        void InitLess(JNIEnv* env);
+
     private:
         inline static std::unique_ptr<Context> instance_ = std::make_unique<Context>();
         jobject inject_class_loader_ = nullptr;
@@ -76,7 +78,7 @@ namespace lspd {
 
         struct PreloadedDex {
 
-            PreloadedDex() : addr_(nullptr), size_(0) {}
+            PreloadedDex(void *addr = nullptr, std::size_t size = 0) : addr_(addr), size_(size) {}
 
             PreloadedDex(const PreloadedDex &) = delete;
 
