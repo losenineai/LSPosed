@@ -1,7 +1,6 @@
 package org.lsposed.lspd.service;
 
 import static org.lsposed.lspd.service.ServiceManager.TAG;
-import static org.lsposed.lspd.service.ServiceManager.toGlobalNamespace;
 
 import android.content.res.AssetManager;
 import android.content.res.Resources;
@@ -255,7 +254,7 @@ public class ConfigFileManager {
         var preLoadedDexes = new ArrayList<SharedMemory>();
         var moduleClassNames = new ArrayList<String>(1);
         var moduleLibraryNames = new ArrayList<String>(1);
-        try (var apkFile = new ZipFile(toGlobalNamespace(path))) {
+        try (var apkFile = new ZipFile(path)) {
             readDexes(apkFile, preLoadedDexes);
             readName(apkFile, "assets/xposed_init", moduleClassNames);
             readName(apkFile, "assets/native_init", moduleLibraryNames);
