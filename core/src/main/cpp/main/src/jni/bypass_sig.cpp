@@ -26,7 +26,7 @@ namespace lspd {
             });
 
     LSP_DEF_NATIVE_METHOD(void, SigBypass, enableOpenatHook, jstring origApkPath, jstring cacheApkPath) {
-        auto r = HookSymNoHandle(sym___openat, __openat);
+        auto r = HookSymNoHandle(symbol_cache->sym___openat, __openat);
         if (!r) {
             LOGE("Hook __openat fail");
             return;
